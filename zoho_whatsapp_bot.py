@@ -1,0 +1,156 @@
+from flask import Flask, request
+import requests
+import json
+import base64
+
+# Initialize the Flask app
+app = Flask(__name__)
+
+# ---------------- Zoho API Credentials ----------------
+ZOHO_CLIENT_ID = '1000.X2K7Y3IRSVOD8URKP1DIL7EWJY7TTU'
+ZOHO_CLIENT_SECRET = '22208be9ac7dbde7fe81d608ef55b79fb0e32ffa00'
+ZOHO_REFRESH_TOKEN = '1000.63a0d2299a91040cba0783181ad2f860.8619c857c1b256db0495ccbc01bb2b4a'
+
+# ---------------- Twilio Credentials ----------------
+TWILIO_ACCOUNT_SID = 'ACbe8f45a808e118b38ba51567da667ea8'
+TWILIO_AUTH_TOKEN = 'ff5b9167b37c25fd93a49193a8f967f4'
+TWILIO_NUMBER = 'whatsapp:+14155238886'  # This is Twilio's sandbox number
+
+# ---------------- Get Zoho Access Token ----------------
+def get_access_token():
+    """Exchange refresh token for an access token"""
+    url = "https://accounts.zoho.com/oauth/v2/token"
+    params = {
+        "refresh_token": ZOHO_REFRESH_TOKEN,
+        "client_id": ZOHO_CLIENT_ID,
+        "client_secret": ZOHO_CLIENT_SECRET,
+        "grant_type": "refresh_token"
+    }
+    response = requests.post(url, params=params)
+    return response.json().get("access_token")
+
+# ---------------- Add Contact to Zoho CRM ----------------
+def add_contact(name, company):
+    """Add a contact to Zoho CRM"""
+    access_token = get_access_token()
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}",
+        "Content-Type": "application/json"
+    }
+    first_name = " ".join(name.split()[:-1])
+    last_name = name.split()[-1]
+    
+    data = {
+        "data": [{
+            "First_Name": first_name,
+            "Last_Name": last_name,
+            "Account_Name": company
+        }]
+    }
+
+    response = requests.post("https://www.zohoapis.com/crm/v2/Contacts", headers=headers, json=data)
+    return response.json()
+
+# ---------------- Find Contact in Zoho CRM ----------------
+def find_contact(name, company):
+    """Search for a contact by last name and account name"""
+    access_token = get_access_token()
+    last_name = name.split()[-1]
+    url = f"https://www.zohoapis.com/crm/v2/Contacts/search?criteria=(Last_Name:equals:{last_name})and(Account_Name:equals:{company})"
+    
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}"
+    }
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    if "data" in data:
+        return data["data"][0]
+    return None
+
+# ---------------- Convert Contact to Deal ----------------
+def convert_to_deal(name, company, stage="Initial Stage"):
+    """Convert a contact into a deal in Zoho CRM"""
+    contact = find_contact(name, company)
+    if not contact:
+        return {"error": "Contact not found."}
+
+    access_token = get_access_token()
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "data": [{
+            "Deal_Name": f"{name} - {company} Deal",
+            "Stage": stage,
+            "Account_Name": company,
+            "Contact_Name": {
+                "id": contact["id"]
+            }
+        }]
+    }
+
+    response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=data)
+    return response.json()
+
+# ---------------- Send WhatsApp Message ----------------
+def send_whatsapp_message(to, body):
+    """Reply to the user via WhatsApp using Twilio"""
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+    auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    data = {
+        "From": TWILIO_NUMBER,
+        "To": to,
+        "Body": body
+    }
+    requests.post(url, data=data, auth=auth)
+
+# ---------------- Handle Incoming WhatsApp Commands ----------------
+def handle_command(message, sender):
+    """Parse the message and route to appropriate Zoho action"""
+    words = message.split()
+
+    if "add" in words and "contact" in words:
+        try:
+            name_index = words.index("contact") + 1
+            company_index = words.index("company") + 1
+            name = " ".join(words[name_index:company_index - 1])
+            company = " ".join(words[company_index:])
+            result = add_contact(name, company)
+            send_whatsapp_message(sender, f"✅ Added contact {name} with company {company}")
+        except Exception as e:
+            send_whatsapp_message(sender, f"❌ Failed to add contact: {str(e)}")
+
+    elif "convert" in words and "to" in words and "deal" in message:
+        try:
+            name_index = words.index("convert") + 1
+            company_index = words.index("to") - 1
+            stage_index = words.index("stage") + 1 if "stage" in words else None
+            name = " ".join(words[name_index:company_index])
+            company = words[company_index]
+            stage = " ".join(words[stage_index:]) if stage_index else "Initial Stage"
+            result = convert_to_deal(name, company, stage)
+            send_whatsapp_message(sender, f"🔁 Converted {name} to a deal in stage: {stage}")
+        except Exception as e:
+            send_whatsapp_message(sender, f"❌ Failed to convert: {str(e)}")
+    else:
+        send_whatsapp_message(sender, "⚠️ Invalid command format. Use:\n@bot add contact NAME company COMPANY\n@bot convert NAME COMPANY to a deal in STAGE")
+
+# ---------------- Flask Route for WhatsApp Webhook ----------------
+@app.route("/whatsapp", methods=["POST"])
+def whatsapp():
+    """Receives WhatsApp message and triggers command handling"""
+    message = request.form.get("Body")
+    sender = request.form.get("From")
+    print("🟢 Incoming WhatsApp message:", message)
+    print("👤 From:", sender)
+    if message and message.lower().startswith("@bot"):
+        handle_command(message, sender)
+    
+    return "OK", 200
+
+# ---------------- Run Flask Server ----------------
+if __name__ == "__main__":
+    app.run(port=8000)
