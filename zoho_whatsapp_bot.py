@@ -2,19 +2,22 @@ from flask import Flask, request
 import requests
 import json
 import base64
+import os
+from dotenv import load_dotenv
 
+# Load .env file
+load_dotenv()
 # Initialize the Flask app
 app = Flask(__name__)
 
 # ---------------- Zoho API Credentials ----------------
-ZOHO_CLIENT_ID = '1000.X2K7Y3IRSVOD8URKP1DIL7EWJY7TTU'
-ZOHO_CLIENT_SECRET = '22208be9ac7dbde7fe81d608ef55b79fb0e32ffa00'
-ZOHO_REFRESH_TOKEN = '1000.63a0d2299a91040cba0783181ad2f860.8619c857c1b256db0495ccbc01bb2b4a'
+ZOHO_CLIENT_ID = os.environ.get("ZOHO_CLIENT_ID")
+ZOHO_CLIENT_SECRET = os.environ.get("ZOHO_CLIENT_SECRET")
+ZOHO_REFRESH_TOKEN = os.environ.get("ZOHO_REFRESH_TOKEN")
 
-# ---------------- Twilio Credentials ----------------
-TWILIO_ACCOUNT_SID = 'ACbe8f45a808e118b38ba51567da667ea8'
-TWILIO_AUTH_TOKEN = 'ff5b9167b37c25fd93a49193a8f967f4'
-TWILIO_NUMBER = 'whatsapp:+14155238886'  # This is Twilio's sandbox number
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_NUMBER = os.environ.get("TWILIO_NUMBER")
 
 # ---------------- Get Zoho Access Token ----------------
 def get_access_token():
