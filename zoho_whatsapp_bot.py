@@ -128,7 +128,8 @@ def send_whatsapp_message(to, body):
     }
     requests.post(url, data=data, auth=auth)
 
-# ---------------- Handle Incoming WhatsApp Commands ----------------def handle_command(message, sender):
+# ---------------- Handle Incoming WhatsApp Commands ----------------
+def handle_command(message, sender):
     """Parse the message and route to appropriate Zoho action"""
     message = message.strip()
 
@@ -150,27 +151,29 @@ def send_whatsapp_message(to, body):
                 send_whatsapp_message(sender, f"✅ Added contact *{name}* with company *{company}*.")
             else:
                 send_whatsapp_message(sender, f"⚠️ Failed to add contact. Response: {json.dumps(result)}")
+
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while adding contact: {str(e)}")
 
     # ---------------- Handle Convert to Deal ----------------
     elif "convert" in message and "to a deal" in message:
         try:
-            # Extract custom_name and company from between 'convert' and 'to a deal'
-            before_to = message.split("convert", 1)[1].split("to a deal", 1)[0].strip()
-            words = before_to.split()
+            # Extract part between 'convert' and 'to a deal'
+            between_convert_to = message.split("convert", 1)[1].split("to a deal", 1)[0].strip()
+            words = between_convert_to.split()
+
+            if len(words) < 2:
+                send_whatsapp_message(sender, "⚠️ Please provide both a deal identifier and a company name.")
+                return
+
             custom_name = words[0]
             company = " ".join(words[1:])
 
-            # Extract stage if 'in' is present
-            if "in" in message:
-                stage = message.split("in", 1)[1].strip()
+            # Extract stage after "in", if present
+            if " in " in message:
+                stage = message.split(" in ", 1)[1].strip()
             else:
                 stage = "Initial Stage"
-
-            if not custom_name or not company:
-                send_whatsapp_message(sender, "⚠️ Please provide both a deal identifier and a company name.")
-                return
 
             result = convert_to_deal(custom_name, company, stage)
             send_whatsapp_message(sender, result)
@@ -178,6 +181,7 @@ def send_whatsapp_message(to, body):
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while converting to deal: {str(e)}")
 
+    # ---------------- Invalid Format ----------------
     else:
         send_whatsapp_message(
             sender,
