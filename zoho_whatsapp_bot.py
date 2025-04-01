@@ -75,14 +75,10 @@ def find_contact(name, company):
 def convert_to_deal(custom_deal_name, company, stage="Initial Stage"):
     """
     Convert a contact (if exists) into a deal, or just associate the deal with a company.
-    - custom_deal_name: e.g. 'ami/flow48'
-    - company: Account name (already in Zoho CRM)
-    - stage: Must match a valid stage from dropdown
+    Returns a message to send back to the user.
     """
     try:
-        # Attempt to find a contact that might match
-        contact = find_contact(custom_deal_name, company)  # optional
-
+        contact = find_contact(custom_deal_name, company)
         contact_id = contact["id"] if contact else None
 
         access_token = get_access_token()
@@ -91,7 +87,6 @@ def convert_to_deal(custom_deal_name, company, stage="Initial Stage"):
             "Content-Type": "application/json"
         }
 
-        # Build deal name as requested
         deal_name = f"{company} {custom_deal_name}"
 
         deal_data = {
@@ -100,17 +95,26 @@ def convert_to_deal(custom_deal_name, company, stage="Initial Stage"):
             "Account_Name": company
         }
 
-        # Add contact only if found
         if contact_id:
             deal_data["Contact_Name"] = {"id": contact_id}
 
         payload = {"data": [deal_data]}
-
         response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=payload)
-        return response.json()
+        res_data = response.json()
+
+        if response.status_code == 201:
+            if contact_id:
+                return f"✅ Deal *'{deal_name}'* successfully created in stage *{stage}*, linked to the contact."
+            else:
+                return f"✅ Deal *'{deal_name}'* created in stage *{stage}*. No contact was linked, only the company."
+        elif "data" in res_data and "message" in res_data["data"][0]:
+            return f"⚠️ Failed to create deal: {res_data['data'][0]['message']}"
+        else:
+            return f"⚠️ Failed to create deal. Response: {json.dumps(res_data)}"
 
     except Exception as e:
-        return {"error": f"Failed to create deal: {str(e)}"}
+        return f"❌ Internal error occurred while creating deal: {str(e)}"
+
 
 # ---------------- Send WhatsApp Message ----------------
 def send_whatsapp_message(to, body):
@@ -149,7 +153,7 @@ def handle_command(message, sender):
             company = words[company_index]
             stage = " ".join(words[stage_index:]) if stage_index else "Initial Stage"
             result = convert_to_deal(name, company, stage)
-            send_whatsapp_message(sender, f"🔁 Converted {name} to a deal in stage: {stage}")
+            send_whatsapp_message(sender, result)
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Failed to convert: {str(e)}")
     else:
