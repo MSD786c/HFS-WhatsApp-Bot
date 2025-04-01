@@ -180,7 +180,21 @@ def handle_command(message, sender):
 
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while converting to deal: {str(e)}")
+# ---------------- New Create Deal Format ----------------
+    elif "create deal with" in message and "as the account name" in message and "as the deal name" in message:
+        try:
+            account_part = message.split("create deal with", 1)[1].split("as the account name", 1)[0].strip()
+            deal_part = message.split("as the deal name", 1)[1].strip()
 
+            account = account_part
+            deal_name = deal_part
+            stage = "Initial Stage"
+
+            result = convert_to_deal(deal_name, account, stage)
+            send_whatsapp_message(sender, result)
+
+        except Exception as e:
+            send_whatsapp_message(sender, f"❌ Error while creating deal: {str(e)}")
     # ---------------- Invalid Format ----------------
     else:
         send_whatsapp_message(
