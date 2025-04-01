@@ -133,31 +133,66 @@ def handle_command(message, sender):
     """Parse the message and route to appropriate Zoho action"""
     words = message.split()
 
-    if "add" in words and "contact" in words:
+    # ---------------- Handle Add Contact Command ----------------
+    if "add" in words and "contact" in words and "company" in words:
         try:
-            name_index = words.index("contact") + 1
-            company_index = words.index("company") + 1
-            name = " ".join(words[name_index:company_index - 1])
-            company = " ".join(words[company_index:])
-            result = add_contact(name, company)
-            send_whatsapp_message(sender, f"✅ Added contact {name} with company {company}")
-        except Exception as e:
-            send_whatsapp_message(sender, f"❌ Failed to add contact: {str(e)}")
+            contact_index = words.index("contact")
+            company_index = words.index("company")
 
-    elif "convert" in words and "to" in words and "deal" in message:
-        try:
-            name_index = words.index("convert") + 1
-            company_index = words.index("to") - 1
-            stage_index = words.index("stage") + 1 if "stage" in words else None
-            name = " ".join(words[name_index:company_index])
-            company = words[company_index]
-            stage = " ".join(words[stage_index:]) if stage_index else "Initial Stage"
-            result = convert_to_deal(name, company, stage)
-            send_whatsapp_message(sender, result)
+            if company_index <= contact_index + 1:
+                send_whatsapp_message(sender, "⚠️ Please provide both a name and a company.")
+                return
+
+            name = " ".join(words[contact_index + 1 : company_index])
+            company = " ".join(words[company_index + 1 :])
+
+            if not name or not company:
+                send_whatsapp_message(sender, "⚠️ Name or company is missing.")
+                return
+
+            result = add_contact(name, company)
+            if "data" in result:
+                send_whatsapp_message(sender, f"✅ Added contact *{name}* with company *{company}*.")
+            else:
+                send_whatsapp_message(sender, f"⚠️ Failed to add contact. Response: {json.dumps(result)}")
+
         except Exception as e:
-            send_whatsapp_message(sender, f"❌ Failed to convert: {str(e)}")
+            send_whatsapp_message(sender, f"❌ Error while adding contact: {str(e)}")
+
+    # ---------------- Handle Convert to Deal Command ----------------
+    elif "convert" in words and "to" in words and "deal" in words:
+        try:
+            convert_index = words.index("convert")
+            to_index = words.index("to")
+
+            between_convert_to = words[convert_index + 1 : to_index]
+
+            if len(between_convert_to) < 2:
+                send_whatsapp_message(sender, "⚠️ Please provide both a deal identifier and a company name.")
+                return
+
+            # First word is the custom deal identifier (e.g., ami/flow48)
+            custom_name = between_convert_to[0]
+            company = " ".join(between_convert_to[1:])
+
+            # Stage if specified
+            stage_index = words.index("stage") + 1 if "stage" in words else None
+            stage = " ".join(words[stage_index:]) if stage_index else "Initial Stage"
+
+            result = convert_to_deal(custom_name, company, stage)
+            send_whatsapp_message(sender, result)
+
+        except Exception as e:
+            send_whatsapp_message(sender, f"❌ Error while converting to deal: {str(e)}")
+
+    # ---------------- Invalid Format ----------------
     else:
-        send_whatsapp_message(sender, "⚠️ Invalid command format. Use:\n@bot add contact NAME company COMPANY\n@bot convert NAME COMPANY to a deal in STAGE")
+        send_whatsapp_message(
+            sender,
+            "⚠️ Invalid command format. Use:\n"
+            "@bot add contact NAME company COMPANY\n"
+            "@bot convert DEAL_ID COMPANY to a deal in STAGE"
+        )
 
 # ---------------- Flask Route for WhatsApp Webhook ----------------
 @app.route("/whatsapp", methods=["POST"])
