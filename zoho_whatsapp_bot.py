@@ -72,31 +72,45 @@ def find_contact(name, company):
     return None
 
 # ---------------- Convert Contact to Deal ----------------
-def convert_to_deal(name, company, stage="Initial Stage"):
-    """Convert a contact into a deal in Zoho CRM"""
-    contact = find_contact(name, company)
-    if not contact:
-        return {"error": "Contact not found."}
+def convert_to_deal(custom_deal_name, company, stage="Initial Stage"):
+    """
+    Convert a contact (if exists) into a deal, or just associate the deal with a company.
+    - custom_deal_name: e.g. 'ami/flow48'
+    - company: Account name (already in Zoho CRM)
+    - stage: Must match a valid stage from dropdown
+    """
+    try:
+        # Attempt to find a contact that might match
+        contact = find_contact(custom_deal_name, company)  # optional
 
-    access_token = get_access_token()
-    headers = {
-        "Authorization": f"Zoho-oauthtoken {access_token}",
-        "Content-Type": "application/json"
-    }
+        contact_id = contact["id"] if contact else None
 
-    data = {
-        "data": [{
-            "Deal_Name": f"{name} - {company} Deal",
+        access_token = get_access_token()
+        headers = {
+            "Authorization": f"Zoho-oauthtoken {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Build deal name as requested
+        deal_name = f"{company} {custom_deal_name}"
+
+        deal_data = {
+            "Deal_Name": deal_name,
             "Stage": stage,
-            "Account_Name": company,
-            "Contact_Name": {
-                "id": contact["id"]
-            }
-        }]
-    }
+            "Account_Name": company
+        }
 
-    response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=data)
-    return response.json()
+        # Add contact only if found
+        if contact_id:
+            deal_data["Contact_Name"] = {"id": contact_id}
+
+        payload = {"data": [deal_data]}
+
+        response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=payload)
+        return response.json()
+
+    except Exception as e:
+        return {"error": f"Failed to create deal: {str(e)}"}
 
 # ---------------- Send WhatsApp Message ----------------
 def send_whatsapp_message(to, body):
