@@ -4,6 +4,8 @@ import json
 import base64
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
 
 # Load .env file
 load_dotenv()
@@ -136,7 +138,6 @@ def handle_command(message, sender):
     # ---------------- Handle Add Contact ----------------
     if "add" in message and "contact" in message and "company" in message:
         try:
-            # extract everything after 'contact' and split by 'company'
             after_contact = message.split("contact", 1)[1].strip()
             name_part, company_part = after_contact.split("company", 1)
             name = name_part.strip()
@@ -158,7 +159,6 @@ def handle_command(message, sender):
     # ---------------- Handle Convert to Deal ----------------
     elif "convert" in message and "to a deal" in message:
         try:
-            # Extract part between 'convert' and 'to a deal'
             between_convert_to = message.split("convert", 1)[1].split("to a deal", 1)[0].strip()
             words = between_convert_to.split()
 
@@ -169,18 +169,15 @@ def handle_command(message, sender):
             custom_name = words[0]
             company = " ".join(words[1:])
 
-            # Extract stage after "in", if present
-            if " in " in message:
-                stage = message.split(" in ", 1)[1].strip()
-            else:
-                stage = "Initial Stage"
+            stage = message.split(" in ", 1)[1].strip() if " in " in message else "Initial Stage"
 
             result = convert_to_deal(custom_name, company, stage)
             send_whatsapp_message(sender, result)
 
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while converting to deal: {str(e)}")
-# ---------------- New Create Deal Format ----------------
+
+    # ---------------- Handle Create Deal ----------------
     elif "create deal with" in message and "as the account name" in message and "as the deal name" in message:
         try:
             account_part = message.split("create deal with", 1)[1].split("as the account name", 1)[0].strip()
@@ -195,14 +192,17 @@ def handle_command(message, sender):
 
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while creating deal: {str(e)}")
+
     # ---------------- Invalid Format ----------------
     else:
         send_whatsapp_message(
             sender,
             "⚠️ Invalid command format. Use:\n"
             "@bot add contact NAME company COMPANY\n"
-            "@bot convert DEAL_ID COMPANY to a deal in STAGE"
+            "@bot convert DEAL_ID COMPANY to a deal in STAGE\n"
+            "@bot create deal with ACCOUNT_NAME as the account name and this as the deal name DEAL_NAME"
         )
+
 
 
 # ---------------- Flask Route for WhatsApp Webhook ----------------
