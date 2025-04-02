@@ -1,14 +1,12 @@
 from flask import Flask, request
 import requests
 import json
-import base64
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 # Load .env file
 load_dotenv()
-# Initialize the Flask app
 app = Flask(__name__)
 
 # ---------------- Zoho API Credentials ----------------
@@ -19,6 +17,44 @@ ZOHO_REFRESH_TOKEN = os.environ.get("ZOHO_REFRESH_TOKEN")
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_NUMBER = os.environ.get("TWILIO_NUMBER")
+
+# ---------------- Allowed Dropdown Values ----------------
+ALLOWED_PIPELINES = [
+    "Standard(Standard)",
+    "HFS - CX pipeline",
+    "HFS - Altalease",
+    "Moneste"
+]
+
+ALLOWED_STAGES = [
+    "HFS Initial Email and Engagement",
+    "HFS Filtration",
+    "HFS Prelimary Data Collection",
+    "HFS Preliminary Assement",
+    "HFS Application Pre-Approval",
+    "HFS - Non-Binding Contract Issued",
+    "HFS - Contract terms approved",
+    "HFS - Credit Risk Assessment",
+    "HFS - Operational DD",
+    "HFS KYC/KYB",
+    "HFS Security Mechanism - Initiated",
+    "HFS Security Mechanism - Done",
+    "HFS CFO Meeting - Done",
+    "HFS Final Review",
+    "On Hold",
+    "HFS - Contract won & Funds deployed",
+    "Cold - Lead",
+    "Closed Lost",
+    "Risk Assessment Failed",
+    "Closed-Lost to Competition",
+    "Current KPIs not fit"
+]
+
+def validate_dropdown(value, allowed_list):
+    for option in allowed_list:
+        if value.strip().lower() == option.lower():
+            return option
+    return None
 
 # ---------------- Get Zoho Access Token ----------------
 def get_access_token():
@@ -32,7 +68,7 @@ def get_access_token():
     response = requests.post(url, params=params)
     return response.json().get("access_token")
 
-# ---------------- Add Contact to Zoho CRM ----------------
+# ---------------- Add Contact ----------------
 def add_contact(name, company):
     access_token = get_access_token()
     headers = {
@@ -52,8 +88,8 @@ def add_contact(name, company):
     response = requests.post("https://www.zohoapis.com/crm/v2/Contacts", headers=headers, json=data)
     return response.json()
 
-# ---------------- Create Deal in Zoho CRM ----------------
-def create_deal(deal_name, account_name, stage):
+# ---------------- Create Deal ----------------
+def create_deal(deal_name, account_name, stage, pipeline):
     access_token = get_access_token()
     headers = {
         "Authorization": f"Zoho-oauthtoken {access_token}",
@@ -66,13 +102,14 @@ def create_deal(deal_name, account_name, stage):
             "Deal_Name": deal_name,
             "Account_Name": account_name,
             "Stage": stage,
+            "Pipeline": pipeline,
             "Closing_Date": closing_date
         }]
     }
     response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=deal_data)
     return response.json()
 
-# ---------------- Send WhatsApp Message ----------------
+# ---------------- WhatsApp Messaging ----------------
 def send_whatsapp_message(to, body):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
     auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -81,13 +118,17 @@ def send_whatsapp_message(to, body):
         "To": to,
         "Body": body
     }
-    requests.post(url, data=data, auth=auth)
+    response = requests.post(url, data=data, auth=auth)
 
-# ---------------- Handle WhatsApp Commands ----------------
+    print("📤 Twilio Message Send Response:")
+    print(response.status_code)
+    print(response.text)
+
+# ---------------- Command Handler ----------------
 def handle_command(message, sender):
-    message = message.strip().lower()
+    original_message = message.strip()
+    message = original_message.lower()
 
-    # Add Contact Command
     if "add" in message and "contact" in message and "company" in message:
         try:
             after_contact = message.split("contact", 1)[1].strip()
@@ -108,27 +149,45 @@ def handle_command(message, sender):
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while adding contact: {str(e)}")
 
-    # Create Deal Prompt
     elif "create deal" in message:
         try:
-            send_whatsapp_message(sender, "📝 Please send the deal in this format:\n@bot deal name DEAL_NAME account ACCOUNT_NAME stage STAGE")
+            send_whatsapp_message(sender,
+                "📝 Please send the deal in this format:\n"
+                "@bot deal name DEAL_NAME account ACCOUNT_NAME stage STAGE pipeline PIPELINE_NAME\n\n"
+                "📋 Available Pipelines:\n" +
+                "\n".join(ALLOWED_PIPELINES) +
+                "\n\n📅 Available Stages:\n" +
+                "\n".join(ALLOWED_STAGES)
+            )
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error prompting for deal info: {str(e)}")
 
-    # Deal Details Provided
-    elif "deal name" in message and "account" in message and "stage" in message:
+    elif all(x in message for x in ["deal name", "account", "stage", "pipeline"]):
         try:
-            parts = message.split("deal name", 1)[1].strip()
+            parts = original_message.split("deal name", 1)[1].strip()
             deal_part, rest = parts.split("account", 1)
-            account_part, stage_part = rest.split("stage", 1)
+            account_part, stage_pipeline = rest.split("stage", 1)
+            stage_part, pipeline_part = stage_pipeline.split("pipeline", 1)
 
             deal_name = deal_part.strip()
             account_name = account_part.strip()
-            stage = stage_part.strip()
+            stage_input = stage_part.strip()
+            pipeline_input = pipeline_part.strip()
 
-            result = create_deal(deal_name, account_name, stage)
+            stage = validate_dropdown(stage_input, ALLOWED_STAGES)
+            pipeline = validate_dropdown(pipeline_input, ALLOWED_PIPELINES)
+
+            if not stage:
+                send_whatsapp_message(sender, "❌ Invalid stage. Available options:\n" + "\n".join(ALLOWED_STAGES))
+                return
+
+            if not pipeline:
+                send_whatsapp_message(sender, "❌ Invalid pipeline. Available options:\n" + "\n".join(ALLOWED_PIPELINES))
+                return
+
+            result = create_deal(deal_name, account_name, stage, pipeline)
             if "data" in result:
-                send_whatsapp_message(sender, f"✅ Deal *{deal_name}* created for account *{account_name}* in stage *{stage}*.")
+                send_whatsapp_message(sender, f"✅ Deal *{deal_name}* created for account *{account_name}* in stage *{stage}*, pipeline *{pipeline}*.")
             else:
                 send_whatsapp_message(sender, f"⚠️ Failed to create deal. Response: {json.dumps(result)}")
 
@@ -136,9 +195,13 @@ def handle_command(message, sender):
             send_whatsapp_message(sender, f"❌ Error while creating deal: {str(e)}")
 
     else:
-        send_whatsapp_message(sender, "⚠️ Invalid command. Try:\n@bot add contact NAME company COMPANY\n@bot create deal")
+        send_whatsapp_message(sender,
+            "⚠️ Invalid command. Try:\n"
+            "@bot add contact NAME company COMPANY\n"
+            "@bot create deal"
+        )
 
-# ---------------- Flask WhatsApp Webhook ----------------
+# ---------------- Webhook ----------------
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     message = request.form.get("Body")
@@ -149,6 +212,6 @@ def whatsapp():
         handle_command(message, sender)
     return "OK", 200
 
-# ---------------- Run Flask Server ----------------
+# ---------------- Run Server ----------------
 if __name__ == "__main__":
     app.run(port=8000)
