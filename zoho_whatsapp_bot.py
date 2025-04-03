@@ -109,6 +109,38 @@ def create_deal(deal_name, account_name, stage, pipeline):
     response = requests.post("https://www.zohoapis.com/crm/v2/Deals", headers=headers, json=deal_data)
     return response.json()
 
+# ---------------- Add Note to Deal ----------------
+def add_note_to_deal(deal_name, note_text):
+    access_token = get_access_token()
+    headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
+
+    # Search for deal
+    search_url = f"https://www.zohoapis.com/crm/v2/Deals/search?criteria=(Deal_Name:equals:{deal_name})"
+    search_response = requests.get(search_url, headers=headers)
+    search_data = search_response.json()
+
+    if "data" not in search_data:
+        return f"❌ No deal found with name: {deal_name}"
+
+    deal_id = search_data["data"][0]["id"]
+
+    # Add the note
+    note_url = f"https://www.zohoapis.com/crm/v2/Deals/{deal_id}/Notes"
+    note_headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}",
+        "Content-Type": "application/json"
+    }
+    note_payload = {
+        "data": [
+            {
+                "Note_Title": "Bot Note",
+                "Note_Content": note_text
+            }
+        ]
+    }
+    note_response = requests.post(note_url, headers=note_headers, json=note_payload)
+    return "✅ Note added to deal." if note_response.status_code == 201 else f"❌ Failed to add note: {note_response.text}"
+
 # ---------------- WhatsApp Messaging ----------------
 def send_whatsapp_message(to, body):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
@@ -194,11 +226,25 @@ def handle_command(message, sender):
         except Exception as e:
             send_whatsapp_message(sender, f"❌ Error while creating deal: {str(e)}")
 
+    elif "note" in message and "note_content" in message:
+        try:
+            parts = original_message.split("note", 1)[1].strip()
+            deal_part, note_part = parts.split("note_content", 1)
+            deal_name = deal_part.strip()
+            note_text = note_part.strip()
+
+            result = add_note_to_deal(deal_name, note_text)
+            send_whatsapp_message(sender, result)
+
+        except Exception as e:
+            send_whatsapp_message(sender, f"❌ Error while adding note: {str(e)}")
+
     else:
         send_whatsapp_message(sender,
             "⚠️ Invalid command. Try:\n"
             "@bot add contact NAME company COMPANY\n"
-            "@bot create deal"
+            "@bot create deal\n"
+            "@bot note DEAL_NAME note_content YOUR_NOTE"
         )
 
 # ---------------- Webhook ----------------
