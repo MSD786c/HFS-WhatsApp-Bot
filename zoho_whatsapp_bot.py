@@ -153,9 +153,9 @@ def send_whatsapp_message(to, body):
     response = requests.post(url, data=data, auth=auth)
 
     print("📤 Twilio Message Send Response:")
+    print(f"To: {to}")
     print(response.status_code)
     print(response.text)
-
 # ---------------- Command Handler ----------------
 def handle_command(message, sender):
     original_message = message.strip()
