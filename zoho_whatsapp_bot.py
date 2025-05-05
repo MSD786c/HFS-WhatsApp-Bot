@@ -583,6 +583,11 @@ def debug_all_accounts():
     print("🔍 Accounts Fetch URL:", response.url)
     return response.json()
 
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ WhatsApp Bot is up and running!", 200
+
+
 # ---------------- Run Server ----------------
 if __name__ == "__main__":
     app.run(port=8000)
